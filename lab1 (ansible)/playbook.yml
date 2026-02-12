@@ -1,0 +1,15 @@
+---
+- name: Установка nginx
+  hosts: webservers
+  become: true
+
+  tasks:
+    - name: Установить nginx (Arch, из репозитория extra)
+      pacman:
+        name: nginx
+        state: present
+    - name: Добавить nginx в автозагрузку
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
