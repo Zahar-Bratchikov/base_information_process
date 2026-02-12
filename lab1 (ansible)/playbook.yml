@@ -1,4 +1,3 @@
----
 - name: Установка nginx
   hosts: webservers
   become: true
