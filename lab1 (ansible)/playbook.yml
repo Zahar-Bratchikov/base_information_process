@@ -1,13 +1,31 @@
-- name: Установка nginx
+- name: Установка docker, docker-compose и nginx
   hosts: webservers
   become: true
 
   tasks:
-    - name: Установить nginx (Arch, из репозитория extra)
+    - name: Установить docker
+      pacman:
+        name: docker
+        state: present
+        update_cache: yes
+
+    - name: Установить docker-compose
+      pacman:
+        name: docker-compose
+        state: present
+
+    - name: Запустить и включить docker сервис
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Установить nginx
       pacman:
         name: nginx
         state: present
-    - name: Добавить nginx в автозагрузку
+
+    - name: Запустить и включить nginx сервис
       systemd:
         name: nginx
         state: started
