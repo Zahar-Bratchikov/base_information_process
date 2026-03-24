@@ -1,0 +1,15 @@
+services:
+
+  nginx:
+    image: nginx
+
+  traefik:
+    image: "traefik:v3.2"
+    ports:
+      - 80:80
+      - 443:443
+    depends_on:
+      - nginx
+    volumes:
+      - ./traefik:/etc/traefik
+      - ./certs:/etc/certs
