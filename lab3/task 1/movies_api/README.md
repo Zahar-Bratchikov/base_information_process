@@ -1,77 +1,41 @@
-# Movies API — учёт просмотренных фильмов (MongoDB)
+# Movies API (MongoDB)
 
-Backend для приложения учёта просмотренных фильмов на FastAPI и MongoDB.
+Backend для приложения учёта просмотренных фильмов на MongoDB.
 
-## Поля документа фильма
+## Запуск через Docker Compose
 
-- **title** — название фильма
-- **studio** — студия
-- **year** — год съёмки
-- **rating** — оценка (0–10)
-- **status** — статус: `watched` (просмотрено) / `not_watched` (нет)
-- **actors** — список актёров
-- **director** — режиссёр
-- **genre** — жанр
+1. Перейдите в папку `movies_api`:
+   - `cd "lab3/task 1/movies_api"`
+2. Поднимите сервисы:
+   - `docker compose up --build`
 
-## Запуск
+API будет доступен по адресу: `http://localhost:8000`.
 
-1. Поднять MongoDB (например, через docker-compose в этой папке):
+## Эндпоинты
 
-   ```bash
-   docker-compose up -d
-   ```
+### Health
 
-2. Установить зависимости и запустить API:
-
-   ```bash
-   pip install -r requirements.txt
-   uvicorn app.main:app --reload
-   ```
-
-3. Документация: http://localhost:8000/docs
-
-## Переменные окружения
-
-- `APP_MONGODB_URL` — URL MongoDB (по умолчанию `mongodb://root:root@localhost:27017/`)
-- `APP_MONGODB_DATABASE` — имя БД (по умолчанию `movies_db`)
-- `APP_MONGODB_COLLECTION` — имя коллекции (по умолчанию `movies`)
-
-## API
+- `GET /health`
 
 ### CRUD
 
-- `POST /movies` — добавить фильм
-- `GET /movies` — список фильмов (с пагинацией `skip`, `limit`)
-- `GET /movies/{movie_id}` — получить фильм по id
-- `PATCH /movies/{movie_id}` — обновить фильм
-- `DELETE /movies/{movie_id}` — удалить фильм
+- `POST /movies` - добавить фильм
+- `GET /movies/{movie_id}` - получить фильм по `movie_id`
+- `PUT /movies/{movie_id}` - обновить фильм (полностью)
+- `DELETE /movies/{movie_id}` - удалить фильм
+- `GET /movies` - список фильмов + фильтрация/пагинация
+- `GET /movies/count` - количество фильмов по фильтрации
 
-### Выборка и подсчёт
+### Фильтрация (для `GET /movies` и `GET /movies/count`)
 
-Критерии задаются query-параметрами (можно комбинировать):
+Можно передавать комбинации параметров:
 
-- **year_from**, **year_to** — диапазон лет съёмки
-- **rating_min** — оценка от n и выше
-- **actor** — в фильме снимался указанный актёр
-- **director** — режиссёр
-- **genre** — жанр
-- **status** — `watched` или `not_watched`
+- `year_from`, `year_to` - диапазон лет
+- `min_rating` - оценка `>=`
+- `actor` - фильм содержит актёра в списке `actors`
+- `director` - режиссёр
+- `genre` - жанр
+- `status` - `watched` / `not_watched` или `просмотрено` / `нет`
+- `offset` - сдвиг (для списка)
+- `limit` - лимит (для списка)
 
-- `GET /movies?year_from=2000&year_to=2010&rating_min=7&...` — список с фильтрами
-- `GET /movies/count?year_from=2000&rating_min=7&...` — число фильмов по тем же критериям
-
-Примеры:
-
-```bash
-# Фильмы 2010–2020 с оценкой не ниже 8
-GET /movies?year_from=2010&year_to=2020&rating_min=8
-
-# Фильмы с участием актёра
-GET /movies?actor=Leonardo DiCaprio
-
-# Просмотренные фильмы режиссёра
-GET /movies?director=Christopher Nolan&status=watched
-
-# Количество непросмотренных фильмов жанра "драма"
-GET /movies/count?genre=драма&status=not_watched
-```

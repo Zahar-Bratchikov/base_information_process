@@ -1,16 +1,26 @@
 services:
-  mongodb:
-    image: mongodb/mongodb-community-server:latest
-    restart: unless-stopped
-    environment:
-      - MONGODB_INITDB_ROOT_USERNAME=root
-      - MONGODB_INITDB_ROOT_PASSWORD=root
+  mongo:
+    image: mongo:7
     ports:
-      - 27017:27017
-    volumes:
-      - mongodb_data:/data/db
-      - mongodb_config:/data/configdb
+      - "27017:27017"
+    command: ["mongod", "--bind_ip_all"]
 
-volumes:
-  mongodb_data:
-  mongodb_config:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MONGO_HOST: mongo
+      MONGO_PORT: 27017
+      MONGO_DB: movies_db
+      MONGO_COLLECTION: movies
+    depends_on:
+      - mongo
+
+networks:
+  default:
+    name: movies_api_net
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+

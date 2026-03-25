@@ -1,144 +1,105 @@
 from __future__ import annotations
 
-from typing import Annotated
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from bson.errors import InvalidId
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
-from app.database import get_database
-from app.repository import (
-    count_movies,
-    create_movie,
-    delete_movie,
-    get_movie_by_id,
-    list_movies,
-    update_movie,
-)
-from app.schemas import (
-    MovieCreate,
-    MovieFilters,
+from ..mongo_service import MongoService
+from ..schemas import (
+    MovieCreateRequest,
+    MovieFilterQuery,
     MovieResponse,
-    MovieUpdate,
-    WatchStatus,
+    MovieUpdateRequest,
+    MoviesCountResponse,
+    MoviesListResponse,
 )
-from motor.motor_asyncio import AsyncIOMotorDatabase
-
-router = APIRouter(prefix="/movies", tags=["movies"])
 
 
-def _parse_filters(
-    year_from: int | None = None,
-    year_to: int | None = None,
-    rating_min: float | None = None,
-    actor: str | None = None,
-    director: str | None = None,
-    genre: str | None = None,
-    status: WatchStatus | None = None,
-) -> MovieFilters:
-    return MovieFilters(
-        year_from=year_from,
-        year_to=year_to,
-        rating_min=rating_min,
-        actor=actor,
-        director=director,
-        genre=genre,
-        status=status,
-    )
+router = APIRouter()
 
 
-@router.post("", response_model=MovieResponse)
-async def create_movie_endpoint(
-    body: MovieCreate,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
-) -> MovieResponse:
-    """Добавить фильм."""
-    doc = await create_movie(db, body)
-    return MovieResponse(**doc)
+def get_service(request: Request) -> MongoService:
+    return request.app.state.mongo_service
 
 
-@router.get("", response_model=list[MovieResponse])
-async def list_movies_endpoint(
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
-    year_from: int | None = Query(None, ge=1800, le=2100, description="Год съёмки от"),
-    year_to: int | None = Query(None, ge=1800, le=2100, description="Год съёмки до"),
-    rating_min: float | None = Query(None, ge=0, le=10, description="Оценка от n и выше"),
-    actor: str | None = Query(None, description="Актёр снимался в фильме"),
-    director: str | None = Query(None, description="Режиссёр"),
-    genre: str | None = Query(None, description="Жанр"),
-    status: WatchStatus | None = Query(None, description="Просмотрено/нет"),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-) -> list[MovieResponse]:
-    """Получить список фильмов с опциональной фильтрацией по критериям."""
-    filters = _parse_filters(
-        year_from=year_from,
-        year_to=year_to,
-        rating_min=rating_min,
-        actor=actor,
-        director=director,
-        genre=genre,
-        status=status,
-    )
-    items = await list_movies(db, filters=filters, skip=skip, limit=limit)
-    return [MovieResponse(**x) for x in items]
+@router.post("", response_model=MovieResponse, status_code=status.HTTP_201_CREATED)
+def create_movie(body: MovieCreateRequest, request: Request):
+    service = get_service(request)
+    movie_id = service.insert_movie(body.model_dump())
+    movie = service.get_movie(movie_id)
+    if movie is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Movie was inserted but cannot be loaded",
+        )
+    return movie
 
 
-@router.get("/count")
-async def count_movies_endpoint(
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
-    year_from: int | None = Query(None, ge=1800, le=2100),
-    year_to: int | None = Query(None, ge=1800, le=2100),
-    rating_min: float | None = Query(None, ge=0, le=10),
-    actor: str | None = Query(None),
-    director: str | None = Query(None),
-    genre: str | None = Query(None),
-    status: WatchStatus | None = Query(None),
-) -> dict[str, int]:
-    """Подсчёт числа фильмов по тем же критериям (и их комбинациям)."""
-    filters = _parse_filters(
-        year_from=year_from,
-        year_to=year_to,
-        rating_min=rating_min,
-        actor=actor,
-        director=director,
-        genre=genre,
-        status=status,
-    )
-    n = await count_movies(db, filters=filters)
-    return {"count": n}
+@router.get(
+    "/{movie_id}",
+    response_model=MovieResponse,
+    responses={404: {"description": "Movie not found"}},
+)
+def get_movie(movie_id: str, request: Request):
+    service = get_service(request)
+    try:
+        movie = service.get_movie(movie_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid movie_id")
+    if movie is None:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    return movie
 
 
-@router.get("/{movie_id}", response_model=MovieResponse)
-async def get_movie_endpoint(
-    movie_id: str,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
-) -> MovieResponse:
-    """Получить фильм по id."""
-    doc = await get_movie_by_id(db, movie_id)
-    if doc is None:
-        raise HTTPException(status_code=404, detail="Фильм не найден")
-    return MovieResponse(**doc)
+@router.put(
+    "/{movie_id}",
+    response_model=MovieResponse,
+    responses={404: {"description": "Movie not found"}},
+)
+def update_movie(movie_id: str, body: MovieUpdateRequest, request: Request):
+    service = get_service(request)
+    try:
+        ok = service.update_movie(movie_id, body.model_dump())
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid movie_id")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    movie = service.get_movie(movie_id)
+    if movie is None:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    return movie
 
 
-@router.patch("/{movie_id}", response_model=MovieResponse)
-async def update_movie_endpoint(
-    movie_id: str,
-    body: MovieUpdate,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
-) -> MovieResponse:
-    """Обновить фильм."""
-    doc = await update_movie(db, movie_id, body)
-    if doc is None:
-        raise HTTPException(status_code=404, detail="Фильм не найден")
-    return MovieResponse(**doc)
+@router.delete(
+    "/{movie_id}",
+    responses={404: {"description": "Movie not found"}},
+)
+def delete_movie(movie_id: str, request: Request):
+    service = get_service(request)
+    try:
+        deleted = service.delete_movie(movie_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid movie_id")
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    return {"movie_id": movie_id, "deleted": deleted}
 
 
-@router.delete("/{movie_id}")
-async def delete_movie_endpoint(
-    movie_id: str,
-    db: Annotated[AsyncIOMotorDatabase, Depends(get_database)],
-) -> dict[str, bool]:
-    """Удалить фильм."""
-    deleted = await delete_movie(db, movie_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Фильм не найден")
-    return {"deleted": True}
+@router.get("", response_model=MoviesListResponse)
+def list_movies(
+    request: Request,
+    filters: MovieFilterQuery = Depends(),
+):
+    service = get_service(request)
+    items, count = service.search_and_count(filters)
+    return {"count": count, "items": items}
+
+
+@router.get("/count", response_model=MoviesCountResponse)
+def count_movies(
+    request: Request,
+    filters: MovieFilterQuery = Depends(),
+):
+    service = get_service(request)
+    count = service.count_only(filters)
+    return {"count": count}
+
