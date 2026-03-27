@@ -31,6 +31,8 @@ _STATUS_ALIASES: Dict[str, MovieStatus] = {
 def _parse_status(value: Any) -> MovieStatus:
     if value is None:
         raise ValueError("status is required")
+    if isinstance(value, MovieStatus):
+        return value
 
     s = str(value).strip().lower()
     s = s.replace("_", " ")

@@ -34,6 +34,16 @@ def create_movie(body: MovieCreateRequest, request: Request):
     return movie
 
 
+@router.get("/count", response_model=MoviesCountResponse)
+def count_movies(
+    request: Request,
+    filters: MovieFilterQuery = Depends(),
+):
+    service = get_service(request)
+    count = service.count_only(filters)
+    return {"count": count}
+
+
 @router.get(
     "/{movie_id}",
     response_model=MovieResponse,
@@ -92,14 +102,4 @@ def list_movies(
     service = get_service(request)
     items, count = service.search_and_count(filters)
     return {"count": count, "items": items}
-
-
-@router.get("/count", response_model=MoviesCountResponse)
-def count_movies(
-    request: Request,
-    filters: MovieFilterQuery = Depends(),
-):
-    service = get_service(request)
-    count = service.count_only(filters)
-    return {"count": count}
 
